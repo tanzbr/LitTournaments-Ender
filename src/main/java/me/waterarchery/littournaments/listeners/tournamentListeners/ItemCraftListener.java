@@ -25,9 +25,10 @@ public class ItemCraftListener implements Listener {
             ItemStack itemStack = event.getCurrentItem();
             World world = player.getWorld();
             if (itemStack == null) return;
+            int points = itemStack.getAmount();
             List<Tournament> tournaments = tournamentHandler.getTournaments(ItemCraftTournament.class);
             for (Tournament tournament : tournaments) {
-                pointHandler.addPoint(player.getUniqueId(), tournament, world.getName(), itemStack.getType().name(), 1);
+                pointHandler.addPoint(player.getUniqueId(), tournament, world.getName(), itemStack.getType().name(), points);
             }
         }
     }
