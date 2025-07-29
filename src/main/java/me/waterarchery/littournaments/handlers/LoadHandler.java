@@ -13,10 +13,6 @@ import me.waterarchery.littournaments.listeners.JoinLeaveListeners;
 import me.waterarchery.littournaments.listeners.tournamentListeners.*;
 import me.waterarchery.littournaments.models.Tournament;
 import me.waterarchery.littournaments.models.TournamentPlayer;
-import org.bstats.bukkit.Metrics;
-import org.bstats.charts.SimpleBarChart;
-import org.bstats.charts.SimplePie;
-import org.bstats.charts.SingleLineChart;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -131,7 +127,7 @@ public class LoadHandler {
         Logger logger = libs.getLogger();
         LitTournaments instance = LitTournaments.getInstance();
 
-        registerMetrics();
+        // registerMetrics();
 
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             logger.log("Found PlaceHolderAPI hook");
@@ -175,29 +171,6 @@ public class LoadHandler {
             logger.log("Found ShopGuiPlus hook.");
             instance.getServer().getPluginManager().registerEvents(new ShopGuiPlusBuyListener(), instance);
         }
-    }
-
-    private void registerMetrics() {
-        LitTournaments instance = LitTournaments.getInstance();
-        TournamentHandler tournamentHandler = TournamentHandler.getInstance();
-        Metrics metrics = new Metrics(instance, 22957);
-
-        metrics.addCustomChart(new SimpleBarChart("used_tournaments", () -> {
-            Map<String, Integer> map = new HashMap<>();
-            tournamentHandler.getTournaments().forEach(tournament -> map.put(tournament.getIdentifier(), 1));
-            return map;
-        }));
-
-        metrics.addCustomChart(new SimplePie("webhook_used",
-                () -> String.valueOf(FileHandler.getConfig().getYml().getBoolean("DiscordWebhook.Enabled", false))));
-
-        metrics.addCustomChart(new SimplePie("database_type",
-                () -> FileHandler.getConfig().getYml().getString("Database.DatabaseType", "SQLite")));
-
-        metrics.addCustomChart(new SimplePie("language_used",
-                () -> FileHandler.getConfig().getYml().getString("Language", "en")));
-
-        metrics.addCustomChart(new SingleLineChart("tournaments_count", () -> tournamentHandler.getTournaments().size()));
     }
 
     public void saveFiles() {
