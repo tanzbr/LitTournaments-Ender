@@ -22,19 +22,10 @@ import java.util.List;
 
 public class BlockBreakListener implements Listener {
 
-    private boolean enableBlockCache = false;
     private final List<Location> placedBlocksCache = new ArrayList<>();
 
     public BlockBreakListener() {
-        TournamentHandler tournamentHandler = TournamentHandler.getInstance();
-        List<Tournament> tournaments = tournamentHandler.getTournaments(BlockBreakTournament.class);
-
-        if (tournaments.size() > 0) {
-            enableBlockCache = true;
-        }
-
         Bukkit.getScheduler().runTaskTimerAsynchronously(LitTournaments.getInstance(), () -> {
-            if (!enableBlockCache) return;
             placedBlocksCache.clear();
         }, 20*60, 20*60);
     }
@@ -56,7 +47,6 @@ public class BlockBreakListener implements Listener {
 
     @EventHandler (priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (!enableBlockCache) return;
         placedBlocksCache.add(event.getBlock().getLocation());
     }
 
