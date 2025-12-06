@@ -20,9 +20,14 @@ public class MySQL extends Database {
 
     public Connection getSQLConnection() {
         try {
-            return dataSource.getConnection();
+            Connection connection = dataSource.getConnection();
+            // Validate connection
+            if (connection != null && !connection.isClosed() && connection.isValid(5)) {
+                return connection;
+            }
+            LitTournaments.getLitLibs().getLogger().error("Invalid MySQL connection obtained from pool");
         } catch (SQLException ex) {
-            LitTournaments.getLitLibs().getLogger().log("MySQL exception on initialize");
+            LitTournaments.getLitLibs().getLogger().error("MySQL exception on getSQLConnection: " + ex.getMessage());
         }
         return null;
     }
@@ -43,7 +48,13 @@ public class MySQL extends Database {
 
         hikariConfig.addDataSourceProperty("useUnicode", "true");
         hikariConfig.addDataSourceProperty("characterEncoding", "utf8");
+        hikariConfig.addDataSourceProperty("autoReconnect", "true");
+        hikariConfig.addDataSourceProperty("useSSL", "false");
         hikariConfig.setMaximumPoolSize(10);
+        hikariConfig.setMinimumIdle(2);
+        hikariConfig.setConnectionTimeout(30000);
+        hikariConfig.setValidationTimeout(5000);
+        hikariConfig.setLeakDetectionThreshold(60000);
 
         dataSource = new HikariDataSource(hikariConfig);
     }

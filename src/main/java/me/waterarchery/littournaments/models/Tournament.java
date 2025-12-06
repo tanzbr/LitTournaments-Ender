@@ -119,45 +119,99 @@ public class Tournament {
         if (finishTask != null) finishTask.cancel();
     }
 
+    /**
+     * Define se esta instância é a "mestre" responsável por entregar recompensas e
+     * operar mudanças globais no banco (multi-instância).
+     * Usa a chave EnableRewards da config como "flag" de master.
+     */
+    private boolean isRewardMaster() {
+        return FileHandler.getConfig().getYml().getBoolean("EnableRewards", true);
+    }
+
     public void finishTournament() {
         Tournament tournament = this;
         Database database = LitTournaments.getDatabase();
         TournamentHandler tournamentHandler = TournamentHandler.getInstance();
         PlayerHandler playerHandler = PlayerHandler.getInstance();
+        
+        // Executar comandos de finalização do torneio (local, todas as instâncias)
         tournamentHandler.parseConditionalCommand(tournament, "TOURNAMENT_END");
 
+        // Disparar evento de finalização do torneio (local)
         TournamentEndEvent tournamentEndEvent = new TournamentEndEvent(tournament);
         Bukkit.getPluginManager().callEvent(tournamentEndEvent);
-        WebhookHandler.sendWebhook(tournament);
+        
+        // Webhook pode duplicar em multi-instância; enviar apenas na instância mestre
+        if (isRewardMaster()) {
+            WebhookHandler.sendWebhook(tournament);
+        }
+        
         int waitTime = FileHandler.getConfig().getYml().getInt("WaitTimeBetweenTournaments");
+        boolean enableRewards = isRewardMaster();
 
-        CompletableFuture.runAsync(database.getReloadTournamentRunnable(tournament))
-                .thenRun(() -> {
-                    if (shouldRestartAfterFinished) {
-                        tournamentHandler.parseRewards(tournament);
-                        database.clearTournament(tournament);
-                        playerHandler.clearPlayerValues(tournament);
-                        getLeaderboard().clear();
-                        stopFinishTask();
-                        return;
-                    }
+        if (enableRewards) {
+            // Somente a instância mestre realiza o reload do DB e entrega de recompensas
+            LitTournaments.getInstance().getLogger().info("[LitTournaments] Starting database reload for tournament: " + tournament.getIdentifier());
 
-                    File file = new File(LitTournaments.getInstance().getDataFolder(), "/tournaments/" + this.identifier + ".yml");
-                    yamlConfiguration.set("Active", false);
-                    try {
-                        yamlConfiguration.save(file);
-                    } catch (IOException e) {
-                        LitTournaments.getInstance().getLogger().log(Level.WARNING, "Error saving tournament file: " + this.identifier, e);
-                    }
+            CompletableFuture.runAsync(database.getReloadTournamentRunnable(tournament))
+                    .thenRun(() -> {
+                        // Após o reload ser concluído, executar recompensas na thread principal do Bukkit
+                        Bukkit.getScheduler().runTask(LitTournaments.getInstance(), () -> {
+                            try {
+                                LitTournaments.getInstance().getLogger().info("[LitTournaments] Database reload completed for tournament: " + tournament.getIdentifier());
 
-                    this.isActive = false;
-                    tournamentHandler.parseRewards(tournament);
-                    stopFinishTask();
-                }).thenRun(() -> {
-                    if (!shouldRestartAfterFinished) return;
+                                LitTournaments.getInstance().getLogger().info("[LitTournaments] Executing rewards for tournament: " + tournament.getIdentifier());
+                                tournamentHandler.parseRewards(tournament);
 
-                    Bukkit.getScheduler().runTaskLater(LitTournaments.getInstance(), this::startTournament, waitTime * 20L);
-                });
+                                // Executar limpeza e finalização após as recompensas
+                                finalizeTournamentCleanup(tournament, database, playerHandler, waitTime);
+
+                            } catch (Exception e) {
+                                LitTournaments.getInstance().getLogger().severe("[LitTournaments] ERROR executing rewards for tournament " + tournament.getIdentifier() + ": " + e.getMessage());
+                                e.printStackTrace();
+
+                                // Mesmo com erro nas recompensas, executar limpeza
+                                finalizeTournamentCleanup(tournament, database, playerHandler, waitTime);
+                            }
+                        });
+                    });
+        } else {
+            // Nas instâncias não-mestras, pular reload/recompensas e apenas finalizar localmente
+            LitTournaments.getInstance().getLogger().info("[LitTournaments] Rewards disabled on this instance. Skipping DB reload and rewards for tournament: " + tournament.getIdentifier());
+            finalizeTournamentCleanup(tournament, database, playerHandler, waitTime);
+        }
+    }
+    
+    /**
+     * Executa a limpeza final do torneio após as recompensas
+     */
+    private void finalizeTournamentCleanup(Tournament tournament, Database database, PlayerHandler playerHandler, int waitTime) {
+        // Marcar torneio como inativo
+        this.isActive = false;
+        
+        // Salvar estado no arquivo
+        File file = new File(LitTournaments.getInstance().getDataFolder(), "/tournaments/" + this.identifier + ".yml");
+        yamlConfiguration.set("Active", false);
+        try {
+            yamlConfiguration.save(file);
+        } catch (IOException e) {
+            LitTournaments.getInstance().getLogger().log(Level.WARNING, "Error saving tournament file: " + this.identifier, e);
+        }
+        
+        // Limpar dados do torneio no DB apenas na instância mestre
+        if (isRewardMaster()) {
+            database.clearTournament(tournament);
+        } else {
+            LitTournaments.getInstance().getLogger().info("[LitTournaments] Skipping DB clear on non-reward instance for: " + this.identifier);
+        }
+        playerHandler.clearPlayerValues(tournament);
+        getLeaderboard().clear();
+        stopFinishTask();
+        
+        // Se deve reiniciar após finalizar, agendar o reinício
+        if (shouldRestartAfterFinished) {
+            Bukkit.getScheduler().runTaskLater(LitTournaments.getInstance(), this::startTournament, waitTime * 20L);
+        }
     }
 
     public void startTournament() {
@@ -166,9 +220,16 @@ public class Tournament {
         PlayerHandler playerHandler = PlayerHandler.getInstance();
 
         startFinishTask();
-        database.clearTournament(this);
+        if (isRewardMaster()) {
+            database.clearTournament(this);
+        } else {
+            LitTournaments.getInstance().getLogger().info("[LitTournaments] Skipping DB clear on start (non-reward instance) for: " + this.identifier);
+        }
         playerHandler.clearPlayerValues(this);
         getLeaderboard().clear();
+        
+        // Limpar cache de recompensas para este torneio
+        tournamentHandler.clearRewardCache(this.identifier);
 
         TournamentStartEvent tournamentStartEvent = new TournamentStartEvent(this);
         Bukkit.getPluginManager().callEvent(tournamentStartEvent);

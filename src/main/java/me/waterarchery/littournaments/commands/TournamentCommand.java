@@ -31,10 +31,19 @@ public class TournamentCommand extends BaseCommand {
     @Default
     public void defaultCmd(CommandSender sender) {
         LitLibs libs = LitTournaments.getLitLibs();
+        
+        if (libs == null) {
+            sender.sendMessage("§cO torneio ainda está carregando, por favor aguarde um momento.");
+            return;
+        }
 
         if (sender instanceof Player player) {
             BaseGui gui = TournamentGUI.of(player);
-            gui.open(player);
+            if (gui != null) {
+                gui.open(player);
+            } else {
+                libs.getMessageHandler().sendLangMessage(sender, "InGameOnly");
+            }
         }
         else {
             libs.getMessageHandler().sendLangMessage(sender, "InGameOnly");

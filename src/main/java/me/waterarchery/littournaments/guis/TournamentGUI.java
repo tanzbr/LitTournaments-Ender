@@ -33,6 +33,11 @@ public class TournamentGUI {
         GUIHandler guiHandler = GUIHandler.getInstance();
         ConfigManager manager = FileHandler.getTournamentMenu();
         LitLibs libs = LitTournaments.getLitLibs();
+        
+        if (libs == null) {
+            return null;
+        }
+        
         FileConfiguration yml = manager.getYml();
         PlayerHandler playerHandler = PlayerHandler.getInstance();
         TournamentHandler tournamentHandler = TournamentHandler.getInstance();
@@ -112,9 +117,13 @@ public class TournamentGUI {
             List<String> lore = new ArrayList<>();
 
             for (String part : Objects.requireNonNull(itemMeta.getLore())) {
-                part = part.replace("%position%", valueHandler.getPlayerPosition(tournamentPlayer, tournament))
-                        .replace("%stat%", valueHandler.getPlayerScore(tournamentPlayer, tournament))
-                        .replace("%remaining_time%", valueHandler.getRemainingTime(tournament));
+                String position = valueHandler.getPlayerPosition(tournamentPlayer, tournament);
+                String score = valueHandler.getPlayerScore(tournamentPlayer, tournament);
+                String remainingTime = valueHandler.getRemainingTime(tournament);
+                
+                part = part.replace("%position%", position != null ? position : "Carregando...")
+                        .replace("%stat%", score != null ? score : "0")
+                        .replace("%remaining_time%", remainingTime != null ? remainingTime : "Carregando...");
 
                 List<String> otherPlaceholders = getPlaceholders(part);
 
@@ -124,23 +133,24 @@ public class TournamentGUI {
                                 .replace("leader_score_formatted_", "")
                                 .replace("%", ""));
 
-                        String score = numberFormat.format(valueHandler.getPlayerScoreWithPosition(pos, tournament));
-                        part = part.replace(placeholder, score);
+                        String formattedScore = numberFormat.format(valueHandler.getPlayerScoreWithPosition(pos, tournament));
+                        part = part.replace(placeholder, formattedScore != null ? formattedScore : "0");
                     }
                     else if (placeholder.contains("leader_score_")) {
                         int pos = Integer.parseInt(placeholder
                                 .replace("leader_score_", "")
                                 .replace("%", ""));
 
-                        String score = String.valueOf(valueHandler.getPlayerScoreWithPosition(pos, tournament));
-                        part = part.replace(placeholder, score);
+                        String leaderScore = String.valueOf(valueHandler.getPlayerScoreWithPosition(pos, tournament));
+                        part = part.replace(placeholder, leaderScore != null ? leaderScore : "0");
                     }
                     if (placeholder.contains("leader_name_")) {
                         int pos = Integer.parseInt(placeholder
                                 .replace("leader_name_", "")
                                 .replace("%", ""));
 
-                        part = part.replace(placeholder, valueHandler.getPlayerNameWithPosition(pos, tournament));
+                        String playerName = valueHandler.getPlayerNameWithPosition(pos, tournament);
+                        part = part.replace(placeholder, playerName != null ? playerName : "Carregando...");
                     }
                 }
 

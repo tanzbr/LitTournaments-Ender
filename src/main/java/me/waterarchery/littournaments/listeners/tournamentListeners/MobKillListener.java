@@ -25,8 +25,9 @@ public class MobKillListener implements Listener {
         EntityDamageEvent damageEvent = victim.getLastDamageCause();
         World world = victim.getWorld();
 
-        if (damageEvent == null || damageEvent.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) return;
-
+        if (damageEvent == null) return;
+        if (!(damageEvent.getCause() == EntityDamageEvent.DamageCause.ENTITY_ATTACK || damageEvent.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK || damageEvent.getCause() == EntityDamageEvent.DamageCause.PROJECTILE)) return;
+        
         Player player = event.getEntity().getKiller();
         if (player == null) return;
 

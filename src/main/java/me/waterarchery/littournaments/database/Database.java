@@ -55,8 +55,7 @@ public abstract class Database {
 
     public void addPoint(UUID uuid, Tournament tournament, long point) {
         Runnable runnable = () -> {
-            String query = String.format("INSERT INTO %s (player, score) VALUES(?, ?) ON CONFLICT(player)" +
-                    " DO UPDATE SET score=score + ? WHERE player = ?;", tournament.getIdentifier());
+            String query = getUpsertQuery(tournament.getIdentifier());
 
             try (Connection connection = getSQLConnection()) {
                 PreparedStatement stmt = connection.prepareStatement(query);
@@ -64,11 +63,17 @@ public abstract class Database {
                 stmt.setString(1, uuid.toString());
                 stmt.setLong(2, point);
                 stmt.setLong(3, point);
-                stmt.setString(4, uuid.toString());
+                if (this instanceof MySQL) {
+                    // MySQL ON DUPLICATE KEY UPDATE only needs 3 parameters
+                } else {
+                    // SQLite ON CONFLICT needs 4 parameters 
+                    stmt.setString(4, uuid.toString());
+                }
 
                 stmt.executeUpdate();
             }
             catch (SQLException ex) {
+                LitTournaments.getLitLibs().getLogger().error("Database error in addPoint: " + ex.getMessage());
                 throw new RuntimeException(ex);
             }
         };
@@ -76,9 +81,19 @@ public abstract class Database {
         threadPool.submit(runnable);
     }
 
+    protected String getUpsertQuery(String tableName) {
+        if (this instanceof MySQL) {
+            return String.format("INSERT INTO %s (`player`, `score`) VALUES(?, ?) " +
+                    "ON DUPLICATE KEY UPDATE `score`=`score` + ?;", tableName);
+        } else {
+            return String.format("INSERT INTO %s (`player`, `score`) VALUES(?, ?) ON CONFLICT(`player`)" +
+                    " DO UPDATE SET `score`=`score` + ? WHERE `player` = ?;", tableName);
+        }
+    }
+
     public void setPoint(UUID uuid, Tournament tournament, long point) {
         Runnable runnable = () -> {
-            String query = String.format("REPLACE INTO %s (player, score) VALUES(?, ?);", tournament.getIdentifier());
+            String query = String.format("REPLACE INTO %s (`player`, `score`) VALUES(?, ?);", tournament.getIdentifier());
 
             try (Connection connection = getSQLConnection()) {
                 PreparedStatement stmt = connection.prepareStatement(query);
@@ -96,27 +111,33 @@ public abstract class Database {
     }
 
     public long getPoint(UUID uuid, Tournament tournament) {
-        String query = String.format("SELECT score FROM %s WHERE player = ?;", tournament.getIdentifier());
+        String query = String.format("SELECT `score` FROM %s WHERE `player` = ?;", tournament.getIdentifier());
 
         try (Connection connection = getSQLConnection()) {
+            if (connection == null) {
+                LitTournaments.getLitLibs().getLogger().error("Failed to get database connection for getPoint");
+                return -9999;
+            }
+            
             PreparedStatement stmt = connection.prepareStatement(query);
             stmt.setString(1, uuid.toString());
 
             ResultSet rs = stmt.executeQuery();
 
-            if (rs.isBeforeFirst())
+            if (rs.next())
                 return rs.getLong("score");
             else
                 return -9999;
         }
         catch (SQLException ex) {
-            throw new RuntimeException(ex);
+            LitTournaments.getLitLibs().getLogger().error("Database error in getPoint: " + ex.getMessage());
+            return -9999; // Return -9999 instead of throwing to prevent loading from getting stuck
         }
     }
 
     public void registerToTournament(UUID uuid, Tournament tournament) {
         Runnable runnable = () -> {
-            String QUERY = String.format("INSERT INTO %s (player, score) VALUES(?, ?);", tournament.getIdentifier());
+            String QUERY = String.format("INSERT INTO %s (`player`, `score`) VALUES(?, ?);", tournament.getIdentifier());
 
             try (Connection connection = getSQLConnection()) {
                 PreparedStatement stmt = connection.prepareStatement(QUERY);
@@ -135,7 +156,7 @@ public abstract class Database {
 
     public void deleteFromTournament(UUID uuid, Tournament tournament) {
         Runnable runnable = () -> {
-            String query = String.format("DELETE FROM %s WHERE player = ?;", tournament.getIdentifier());
+            String query = String.format("DELETE FROM %s WHERE `player` = ?;", tournament.getIdentifier());
 
             try (Connection connection = getSQLConnection()) {
                 PreparedStatement stmt = connection.prepareStatement(query);
@@ -157,10 +178,17 @@ public abstract class Database {
 
     public Runnable getReloadTournamentRunnable(Tournament tournament) {
         return () -> {
-            String query = String.format("SELECT * FROM %s ORDER BY score DESC;", tournament.getIdentifier());
+            String query = String.format("SELECT * FROM %s ORDER BY `score` DESC;", tournament.getIdentifier());
             TournamentLeaderboard leaderboard = tournament.getLeaderboard();
 
             try (Connection connection = getSQLConnection()) {
+                if (connection == null) {
+                    LitTournaments.getLitLibs().getLogger().error("Failed to get database connection for leaderboard reload");
+                    return;
+                }
+
+                leaderboard.clear();
+
                 PreparedStatement stmt = connection.prepareStatement(query);
                 ResultSet rs = stmt.executeQuery();
 
@@ -175,6 +203,7 @@ public abstract class Database {
                 }
             }
             catch (SQLException ex) {
+                LitTournaments.getLitLibs().getLogger().error("Database error in leaderboard reload: " + ex.getMessage());
                 throw new RuntimeException(ex);
             }
         };

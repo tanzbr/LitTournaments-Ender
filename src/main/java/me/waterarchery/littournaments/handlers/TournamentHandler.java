@@ -19,7 +19,10 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Getter
 public class TournamentHandler {
@@ -27,6 +30,9 @@ public class TournamentHandler {
     private final List<Tournament> tournaments = new ArrayList<>();
     private final List<Class<Tournament>> tournamentClasses = new ArrayList<>();
     private static TournamentHandler instance;
+    
+    // Cache para evitar duplicação de recompensas
+    private final Set<String> rewardCache = ConcurrentHashMap.newKeySet();
 
     public static TournamentHandler getInstance() {
         if (instance == null) instance = new TournamentHandler();
@@ -112,8 +118,21 @@ public class TournamentHandler {
     }
 
     public void parseRewards(Tournament tournament) {
+        // Verificar se esta instância deve entregar recompensas
+        boolean enableRewards = FileHandler.getConfig().getYml().getBoolean("EnableRewards", true);
+        if (!enableRewards) {
+            LitTournaments.getInstance().getLogger().info("[LitTournaments] Reward delivery disabled on this instance for tournament: " + tournament.getIdentifier());
+            return;
+        }
+        
         YamlConfiguration yml = tournament.getYamlConfiguration();
         TournamentLeaderboard leaderboard = tournament.getLeaderboard();
+        
+        // Log TOP 3 do torneio
+        logTournamentTop3(tournament, leaderboard);
+        
+        String tournamentId = tournament.getIdentifier();
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
 
         for (String rawPos : Objects.requireNonNull(yml.getConfigurationSection("Rewards")).getKeys(false)) {
             List<String> rewards = yml.getStringList("Rewards." + rawPos);
@@ -123,10 +142,56 @@ public class TournamentHandler {
                 TournamentValue value = leaderboard.getPlayer(pos).orElse(null);
                 if (value != null) {
                     String name = value.getName();
-                    parseTournamentReward(reward, name);
+                    
+                    // Gerar chave única para o cache
+                    String cacheKey = tournamentId + "_" + timestamp + "_" + name + "_" + pos + "_" + reward.hashCode();
+                    
+                    // Verificar se já foi processada
+                    if (rewardCache.contains(cacheKey)) {
+                        LitTournaments.getInstance().getLogger().info("[LitTournaments] Reward execution skipped (already in cache) - Tournament: " + tournamentId + ", Player: " + name + ", Position: " + pos);
+                        continue;
+                    }
+                    
+                    // Adicionar ao cache
+                    rewardCache.add(cacheKey);
+                    
+                    // Executar recompensa
+                    parseTournamentReward(reward, name, tournament, pos);
                 }
             }
         }
+    }
+    
+    /**
+     * Log do TOP 3 do torneio
+     */
+    private void logTournamentTop3(Tournament tournament, TournamentLeaderboard leaderboard) {
+        // Debug: Verificar se leaderboard tem dados
+        int totalPlayers = leaderboard.getLeaderboard().size();
+        LitTournaments.getInstance().getLogger().info("[LitTournaments] DEBUG: Tournament " + tournament.getIdentifier() + " has " + totalPlayers + " players in leaderboard");
+        
+        StringBuilder top3Log = new StringBuilder();
+        top3Log.append("[LitTournaments] Tournament ").append(tournament.getIdentifier()).append(" finished! TOP 3: ");
+        
+        for (int i = 1; i <= 3; i++) {
+            TournamentValue player = leaderboard.getPlayer(i).orElse(null);
+            if (player != null) {
+                String playerName = player.getName();
+                long playerScore = player.getValue();
+                
+                // Debug: Log detalhado do jogador
+                LitTournaments.getInstance().getLogger().info("[LitTournaments] DEBUG: Position " + i + " - UUID: " + player.getUuid() + ", Name: " + playerName + ", Score: " + playerScore);
+                
+                top3Log.append(i).append("º ").append(playerName).append(" (").append(playerScore).append(" points)");
+                if (i < 3) top3Log.append(", ");
+            } else {
+                LitTournaments.getInstance().getLogger().info("[LitTournaments] DEBUG: Position " + i + " is empty (no player found)");
+                top3Log.append(i).append("º N/A");
+                if (i < 3) top3Log.append(", ");
+            }
+        }
+        
+        LitTournaments.getInstance().getLogger().info(top3Log.toString());
     }
 
     public void parseConditionalCommand(Tournament tournament, String condition) {
@@ -166,15 +231,24 @@ public class TournamentHandler {
     }
 
     public void parseTournamentReward(String command, @Nullable String targetPlayer) {
+        parseTournamentReward(command, targetPlayer, null, -1);
+    }
+    
+    public void parseTournamentReward(String command, @Nullable String targetPlayer, @Nullable Tournament tournament, int position) {
         LitLibs libs = LitTournaments.getLitLibs();
+        String originalCommand = command;
 
         if (command.startsWith("[MESSAGE]") && targetPlayer != null) {
             Player player = Bukkit.getPlayer(targetPlayer);
-            if (player != null) libs.getMessageHandler().sendMessage(player, command.replace("[MESSAGE] ", ""));
+            if (player != null) {
+                libs.getMessageHandler().sendMessage(player, command.replace("[MESSAGE] ", ""));
+                logRewardExecution(tournament, targetPlayer, position, originalCommand);
+            }
         }
         else if (command.startsWith("[BROADCAST]")) {
             String message = ChatUtils.colorizeLegacy(command.replace("[BROADCAST] ", ""));
             Bukkit.broadcastMessage(message);
+            logRewardExecution(tournament, targetPlayer, position, originalCommand);
         }
         else if (command.startsWith("[COMMAND]")) {
             command = command.replace("[COMMAND] ", "");
@@ -183,7 +257,39 @@ public class TournamentHandler {
             String finalCommand = command;
             Bukkit.getScheduler().runTask(LitTournaments.getInstance(),
                     () -> Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), finalCommand));
+            
+            // Log com o comando após substituição das placeholders
+            logRewardExecution(tournament, targetPlayer, position, "[COMMAND] " + finalCommand);
         }
+    }
+    
+    /**
+     * Log da execução de recompensa
+     */
+    private void logRewardExecution(@Nullable Tournament tournament, @Nullable String playerName, int position, String executedCommand) {
+        if (tournament != null && playerName != null && position > 0) {
+            LitTournaments.getInstance().getLogger().info(
+                String.format("[LitTournaments] Reward executed - Tournament: %s, Player: %s, Position: %d, Command: %s", 
+                    tournament.getIdentifier(), playerName, position, executedCommand)
+            );
+        }
+    }
+    
+    /**
+     * Limpa o cache de recompensas para um torneio específico
+     */
+    public void clearRewardCache(String tournamentId) {
+        rewardCache.removeIf(key -> key.startsWith(tournamentId + "_"));
+        LitTournaments.getInstance().getLogger().info("[LitTournaments] Reward cache cleared for tournament: " + tournamentId);
+    }
+    
+    /**
+     * Limpa todo o cache de recompensas
+     */
+    public void clearAllRewardCache() {
+        int size = rewardCache.size();
+        rewardCache.clear();
+        LitTournaments.getInstance().getLogger().info("[LitTournaments] All reward cache cleared. Removed " + size + " entries.");
     }
 
 }

@@ -38,16 +38,20 @@ public class PlayerHandler {
     }
 
     private TournamentPlayer tryToLoadPlayer(UUID uuid) {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getUniqueId().equals(uuid)) {
-                TournamentPlayer tournamentPlayer = new TournamentPlayer(uuid);
-                players.add(tournamentPlayer);
-                initializePlayer(tournamentPlayer, false);
-                return tournamentPlayer;
-            }
+        // Check if player is online first
+        Player onlinePlayer = Bukkit.getPlayer(uuid);
+        if (onlinePlayer != null && onlinePlayer.isOnline()) {
+            TournamentPlayer tournamentPlayer = new TournamentPlayer(uuid);
+            players.add(tournamentPlayer);
+            initializePlayer(tournamentPlayer, false);
+            return tournamentPlayer;
         }
 
-        return null;
+        // If player is not online, still create a tournament player object
+        // This prevents null pointer exceptions when accessing offline player data
+        TournamentPlayer tournamentPlayer = new TournamentPlayer(uuid);
+        players.add(tournamentPlayer);
+        return tournamentPlayer;
     }
 
     public void clearPlayerValues(Tournament tournament) {
@@ -69,30 +73,42 @@ public class PlayerHandler {
             LitLibs libs = LitTournaments.getLitLibs();
             Player bukkitPlayer = Bukkit.getPlayer(player.getUUID());
 
-            for (Tournament tournament : tournaments) {
-                // Returns -9999 if player's data is not exist
-                long point = database.getPoint(player.getUUID(), tournament);
-                if (point != -9999) {
-                    // Loading existing tournaments
-                    pointMap.put(tournament, point);
-                }
-                else if (isJoinNow) {
-                    // Joining it if player can join
-                    JoinChecker joinChecker = tournament.getJoinChecker();
-                    UUID uuid = player.getUUID();
+            try {
+                for (Tournament tournament : tournaments) {
+                    // Returns -9999 if player's data is not exist
+                    long point = database.getPoint(player.getUUID(), tournament);
+                    if (point != -9999) {
+                        // Loading existing tournaments
+                        pointMap.put(tournament, point);
+                    }
+                    else if (isJoinNow) {
+                        // Joining it if player can join
+                        JoinChecker joinChecker = tournament.getJoinChecker();
+                        UUID uuid = player.getUUID();
 
-                    if (joinChecker.isAutoJoinEnabled() && joinChecker.canJoin(uuid)) {
-                        if (joinChecker.isMessageOnAutoJoin() && bukkitPlayer != null)
-                            libs.getMessageHandler().sendLangMessage(bukkitPlayer, "SuccessfullyRegisteredOnJoin");
-                        player.join(tournament);
+                        if (joinChecker.isAutoJoinEnabled() && joinChecker.canJoin(uuid)) {
+                            if (joinChecker.isMessageOnAutoJoin() && bukkitPlayer != null)
+                                libs.getMessageHandler().sendLangMessage(bukkitPlayer, "SuccessfullyRegisteredOnJoin");
+                            player.join(tournament);
+                        }
                     }
                 }
+            } catch (Exception ex) {
+                libs.getLogger().error("Error initializing player " + player.getUUID() + ": " + ex.getMessage());
             }
 
             return pointMap;
         }).thenAccept((map) -> {
             player.getTournamentValueMap().putAll(map);
             player.setLoading(false);
+        }).exceptionally((ex) -> {
+            LitTournaments.getLitLibs().getLogger().error("Failed to initialize player " + player.getUUID() + ": " + ex.getMessage());
+            player.setLoading(false); // Important: Reset loading state even on failure
+            return null;
+        }).orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).exceptionally((ex) -> {
+            LitTournaments.getLitLibs().getLogger().error("Player initialization timeout for " + player.getUUID());
+            player.setLoading(false); // Reset loading state on timeout
+            return null;
         });
     }
 

@@ -17,13 +17,14 @@ import java.util.List;
 public class PlayerFishListener implements Listener {
 
     @EventHandler (priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockPlace(PlayerFishEvent event) {
+    public void onPlayerFish(PlayerFishEvent event) {
         PointHandler pointHandler = PointHandler.getInstance();
         TournamentHandler tournamentHandler = TournamentHandler.getInstance();
         Player player = event.getPlayer();
         Entity entity = event.getCaught();
 
         if (entity == null) return;
+        if (event.getState() != PlayerFishEvent.State.CAUGHT_FISH) return;
 
         World world = entity.getWorld();
         List<Tournament> tournaments = tournamentHandler.getTournaments(PlayerFishTournament.class);

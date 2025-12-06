@@ -95,10 +95,9 @@ public class LeaderboardGUI {
         List<String> newLore = new ArrayList<>();
 
         assert itemMeta != null;
-        itemMeta.setDisplayName(itemMeta.getDisplayName().replace("%player%",
-                Objects.requireNonNull(player.getName())));
+        itemMeta.setDisplayName(itemMeta.getDisplayName().replace("%player%", player != null ? player.getName() : "Desconhecido"));
 
-        Objects.requireNonNull(itemMeta.getLore()).forEach(part -> newLore.add(part
+        itemMeta.getLore().forEach(part -> newLore.add(part
                 .replace("%name%", player.getName())
                 .replace("%stat%", value)
                 .replace("%position%", pos)));

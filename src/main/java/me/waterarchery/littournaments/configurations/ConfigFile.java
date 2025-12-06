@@ -35,6 +35,12 @@ public class ConfigFile extends ConfigManager {
                 "If you set this to true, it will disable leaderboard menu opening",
                 "with right clicking tournament item in /tournament gui."
         )));
+        
+        addDefault(ConfigPart.of("EnableRewards", true, Arrays.asList(
+                "Enable or disable reward execution on this plugin instance.",
+                "Only one instance should have this enabled to prevent reward duplication.",
+                "The instance with this enabled will handle all tournament reward distributions."
+        )));
 
         addDefault(ConfigPart.of("DiscordWebhook", null, Arrays.asList(
                 "You can enable Discord web hook support on",

@@ -155,10 +155,6 @@ public class LoadHandler {
             logger.log("Found Duels hook.");
             instance.getServer().getPluginManager().registerEvents(new DuelsWinListener(), instance);
         }
-        if (Bukkit.getPluginManager().isPluginEnabled("MythicMobs")) {
-            logger.log("Found MythicMobs hook.");
-            instance.getServer().getPluginManager().registerEvents(new MythicMobsKillListener(), instance);
-        }
         if (Bukkit.getPluginManager().isPluginEnabled("RivalHarvesterHoes")) {
             logger.log("Found RivalHarvesterHoes hook.");
             instance.getServer().getPluginManager().registerEvents(new RivalHoeListener(), instance);

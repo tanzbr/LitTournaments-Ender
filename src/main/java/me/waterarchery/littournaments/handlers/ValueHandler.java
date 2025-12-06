@@ -30,7 +30,8 @@ public class ValueHandler {
         if (tournamentPlayer.isRegistered(tournament)) return tournament.getLeaderboard().getPlayerPos(tournamentPlayer) + "";
 
         LitLibs libs = LitTournaments.getLitLibs();
-        return libs.getMessageHandler().getLangMessage("Placeholders.NotRegistered");
+        String message = libs.getMessageHandler().getLangMessage("Placeholders.NotRegistered");
+        return message != null ? message : "Not Registered";
     }
 
     public String getPlayerNameWithPosition(int position, Tournament tournament) {
@@ -40,7 +41,8 @@ public class ValueHandler {
         if (value!= null) return value.getName();
 
         LitLibs libs = LitTournaments.getLitLibs();
-        return libs.getMessageHandler().getLangMessage("Placeholders.None");
+        String message = libs.getMessageHandler().getLangMessage("Placeholders.None");
+        return message != null ? message : "Carregando...";
     }
 
     public long getPlayerScoreWithPosition(int position, Tournament tournament) {
@@ -56,10 +58,15 @@ public class ValueHandler {
         LitLibs libs = LitTournaments.getLitLibs();
 
         if (!tournament.isActive()) {
-            return libs.getMessageHandler().getLangMessage("Placeholders.NotActive");
+            String message = libs.getMessageHandler().getLangMessage("Placeholders.NotActive");
+            return message != null ? message : "Not Active";
         }
 
         String remainingTime = libs.getMessageHandler().getLangMessage("Placeholders.RemainingTime");
+        if (remainingTime == null) {
+            remainingTime = "%day%d %hour%h %minute%m"; // Default format
+        }
+        
         Duration remaining = tournament.getRemainingTime();
 
         return remainingTime.replace("%day%", remaining.toDaysPart() + "")
