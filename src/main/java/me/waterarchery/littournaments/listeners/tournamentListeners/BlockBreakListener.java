@@ -42,11 +42,12 @@ public class BlockBreakListener implements Listener {
         Player player = event.getPlayer();
         Block block = event.getBlock();
         
-        if (block.hasMetadata("PlacedBlock") || (event.getBlock().getType().name().contains("ORE") && player.getInventory().getItemInMainHand().containsEnchantment(Enchantment.SILK_TOUCH))) return;
         if (block.getBlockData() instanceof Ageable a) {
             if (a.getAge() != a.getMaximumAge()) {
                 return;
             }
+        } else {
+            if (block.hasMetadata("TournamentPlacedBlock") || (event.getBlock().getType().name().contains("ORE") && player.getInventory().getItemInMainHand().containsEnchantment(Enchantment.SILK_TOUCH))) return;
         }
 
         World world = block.getWorld();
@@ -60,7 +61,7 @@ public class BlockBreakListener implements Listener {
     @EventHandler (priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
         if (event.getBlock().getBlockData() instanceof Ageable) return;
-        event.getBlock().setMetadata("PlacedBlock", new FixedMetadataValue(LitTournaments.getInstance(), event.getPlayer().getName()));
+        event.getBlock().setMetadata("TournamentPlacedBlock", new FixedMetadataValue(LitTournaments.getInstance(), event.getPlayer().getName()));
     }
 
 }
